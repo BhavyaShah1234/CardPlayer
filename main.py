@@ -23,8 +23,8 @@ def cycle_players(previous_turn, game):
 def get_new_text_id(texts):
     return max(list(texts.keys())) + 1
 
-def add_text(texts, text_id, text, position, camera):
-    texts[text_id] = {'text': text, 'position': position}
+def add_text(texts: dict, text_id: int, text: str, position: str, color: str, camera):
+    texts[text_id] = {'text': text, 'position': position, 'color': color}
     camera.update_text(texts)
     return texts
 
@@ -33,21 +33,50 @@ def remove_text(texts, text_id, camera):
     camera.update_text(texts)
     return texts
 
-def decide_hands(trump_suite, total_cards, player_turns, expected_hands, our_cards, model):
-    prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours. The cards we have are {our_cards}. How many hands can we make with these cards?"
-    # hands = model.decide_hands(prompt)
-    hands = 3
+def decide_hands(trump_suite, total_cards, player_turns, expected_hands, our_cards, forbidden, model):
+    if forbidden is not None:
+        prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. X is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards} and {forbidden} is forbidden."
+    else:
+        prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. X is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards}."
+    # hands = int(model.decide_hands(prompt))
+    hands = 1
     return hands
+
+def decide_card(played_cards, our_cards, hands, model):
+    prompt = f"It is our turn now. These are our cards left in hand: {our_cards}. The players before us played the following cards in the following order: {played_cards}. We have to make {hands['expected']} hands from which we have made {hands['made']} hands. Which card should we play next? Answer in terms of SA, HK, CQ, DJ and should be present in our cards."
+    # card = model.decide_card(prompt)
+    card = 'SJ'
+    return card
+
+def decide_round_winner(played_cards: dict, trump_suite: str):
+    winner = None
+    max_score = -1
+    suite_rank = {trump_suite: 2, list(played_cards.items())[0][1][0]: 1}
+    for suite in ['S', 'H', 'C', 'D']:
+        if suite not in suite_rank:
+            suite_rank[suite] = 0
+    card_rank = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14}
+    for player in played_cards:
+        card = played_cards[player]
+        score = suite_rank[card[0]] * card_rank[card[1:]]
+        if score > max_score:
+            max_score = score
+            winner = player
+    index = list(played_cards.keys()).index(winner)
+    return index, winner
 
 if __name__ == '__main__':
     WEIGHT_PATH = r'weights\best.pt'
-    CAMERA_ID = 1
-    IMG_H, IMG_W = 720, 1280
+    CAMERA_ID = 0
+    IMG_H, IMG_W = 640, 640
     GAMES = 1
     DEAL_TIME = 5
-    PLAYER_TURNS = ['A', 'B', 'C', 'COMPUTER']
+    PLAY_TIME = 5
+    TURN_TIME = 3
+    WIN_TIME = 4
+    PLAYER_TURNS = ['A', 'B', 'C', 'ME']
     SUITE_CYCLE = ['S', 'D', 'C', 'H']
-    CARD_CYCLE = [8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8]
+    CARD_CYCLE = [5, 4, 3, 2, 1, 1, 2, 3, 4, 5] # [8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8]
     LOGGER = l.getLogger(__name__)
     l.basicConfig(filename='system.log', filemode='w', level=l.DEBUG, format='[%(levelname)s] %(filename)s---->%(message)s')
     GAME_TABLE = create_game_table(GAMES, SUITE_CYCLE, CARD_CYCLE, PLAYER_TURNS)
@@ -65,73 +94,100 @@ if __name__ == '__main__':
     TEXTS = {}
     #######################################################################################################
     for game in range(GAME_TABLE.shape[0]):
-        # LOGGER.info(f'GAME {game}#########################################')
-        TEXTS = add_text(TEXTS, 0, f'GAME: {game}', 'game', CAMERA)
-
-        total_cards = GAME_TABLE['CARDS'][game]
-        # LOGGER.info(f'TOTAL CARDS: {total_cards}')
-        TEXTS = add_text(TEXTS, 1, f'TOTAL CARDS: {total_cards}', 'total', CAMERA)
-
-        trump_suite = GAME_TABLE['TRUMP_SUITE'][game]
-        # LOGGER.info(f'TRUMP SUITE: {trump_suite}')
-        TEXTS = add_text(TEXTS, 2, f'TRUMP SUITE: {trump_suite}', 'trump', CAMERA)
-
+        TEXTS = add_text(TEXTS, 0, f'GAME: {game}', 'game', 'info', CAMERA)
+        TOTAL_CARDS = GAME_TABLE['CARDS'][game]
+        TEXTS = add_text(TEXTS, 1, f'TOTAL CARDS: {TOTAL_CARDS}', 'total', 'info', CAMERA)
+        TRUMP_SUITE = GAME_TABLE['TRUMP_SUITE'][game]
+        TEXTS = add_text(TEXTS, 2, f'TRUMP SUITE: {TRUMP_SUITE}', 'trump', 'info', CAMERA)
         PLAYER_TURNS = cycle_players(PLAYER_TURNS, game)
-        TEXTS = add_text(TEXTS, 3, f'TURNS: {PLAYER_TURNS}', 'turn', CAMERA)
-        # LOGGER.info(f'PLAYER TURNS: {PLAYER_TURNS}')
-
-        print('DEFAULT TEXT ADDED ON SCREEN')
-        LOGGER.info(f'DEFAULT TEXT ADDED ON SCREEN')
+        TEXTS = add_text(TEXTS, 3, f'TURNS: {PLAYER_TURNS}', 'turn', 'info', CAMERA)
         ###################################################################################################
-        TEXTS = add_text(TEXTS, 4, f'DEAL THE CARDS IN {DEAL_TIME} SECONDS', 'deal', CAMERA)
-        # LOGGER.info(f'DEALING....')
-        time.sleep(DEAL_TIME)
-        TEXTS = remove_text(TEXTS, 4, CAMERA)
+        for i in range(DEAL_TIME, 0, -1):
+            TEXTS = add_text(TEXTS, 4, f'DEAL THE CARDS IN {i} SECONDS', 'deal', 'info', CAMERA)
+            time.sleep(1)
+            TEXTS = remove_text(TEXTS, 4, CAMERA)
         print('DEALING DONE')
         LOGGER.info('DEALING DONE')
         ###################################################################################################
-        expected_hands = {}
+        HANDS_DECISION = {}
         text_id = get_new_text_id(TEXTS)
         for i, player in enumerate(PLAYER_TURNS):
-            if player == 'COMPUTER':
-                TEXTS = add_text(TEXTS, text_id, f'COMPUTER IS DECIDING...', f'decision', CAMERA)
-                # LOGGER.info('COMPUTER IS DECIDING....')
+            HANDS_DECISION[player] = {'text_id': None, 'made': 0, 'expected': 0}
+            sum_of_cards = sum([HANDS_DECISION[p]['expected'] for p in HANDS_DECISION])
+            if player == 'ME':
+                TEXTS = add_text(TEXTS, text_id, f'{player} IS DECIDING...', f'decision', 'info', CAMERA)
                 OUR_CARDS = {}
-                while len(OUR_CARDS) != total_cards:
+                while len(OUR_CARDS) != TOTAL_CARDS:
                     current_frame = CAMERA.current_frame
                     OUR_CARDS = YOLO_MODEL.detect(current_frame)
                     OUR_CARDS = YOLO_MODEL.post_process(OUR_CARDS)
                 LOGGER.info(f'OUR CARDS: {OUR_CARDS}')
-                expected_hands[player] = decide_hands(trump_suite, total_cards, PLAYER_TURNS, expected_hands, OUR_CARDS, LLM_MODEL)
+                if i == len(PLAYER_TURNS) - 1 and sum_of_cards <= TOTAL_CARDS:
+                    forbidden = TOTAL_CARDS - sum_of_cards
+                else:
+                    forbidden = None
+                expected_hands = decide_hands(TRUMP_SUITE, TOTAL_CARDS, PLAYER_TURNS, HANDS_DECISION, OUR_CARDS, forbidden, LLM_MODEL)
+                HANDS_DECISION[player]['expected'] = expected_hands
             else:
-                TEXTS = add_text(TEXTS, text_id, f'PLAYER {player}, DECIDE NUMBER OF HANDS', 'decision', CAMERA)
-                key = CAMERA.key
-                while key < 48 or key > 56:
-                    key = CAMERA.key
-                expected_hands[player] = key - 48
-            LOGGER.info(f'{player} DECIDED {expected_hands[player]} HANDS')
-            TEXTS = add_text(TEXTS, text_id + 1 + i, f'{player}: {expected_hands[player]}', f'hands_{i}', CAMERA)
+                if i == len(PLAYER_TURNS) - 1 and sum_of_cards <= TOTAL_CARDS:
+                    forbidden = TOTAL_CARDS - sum_of_cards
+                    TEXTS = add_text(TEXTS, text_id, f'PLAYER {player}, DECIDE NUMBER OF HANDS. YOU CANNOT CHOOSE {forbidden}.', 'decision', 'info', CAMERA)
+                    expected_hands = CAMERA.key - 48
+                    while expected_hands > TOTAL_CARDS or expected_hands < 0 or expected_hands == forbidden:
+                        expected_hands = CAMERA.key - 48
+                else:
+                    TEXTS = add_text(TEXTS, text_id, f'PLAYER {player}, DECIDE NUMBER OF HANDS', 'decision', 'info', CAMERA)
+                    expected_hands = CAMERA.key - 48
+                    while expected_hands > TOTAL_CARDS or expected_hands < 0:
+                        expected_hands = CAMERA.key - 48
+                HANDS_DECISION[player]['expected'] = expected_hands
+            CAMERA.key = -1
+            LOGGER.info(f"{player} DECIDED {expected_hands} HANDS")
+            TEXTS = add_text(TEXTS, text_id + 1 + i, f"{player}: {HANDS_DECISION[player]['made']} / {HANDS_DECISION[player]['expected']}", f'hands_{i}', 'good' if HANDS_DECISION[player]['made'] == expected_hands else 'bad', CAMERA)
+            HANDS_DECISION[player]['text_id'] = text_id + 1 + i
             TEXTS = remove_text(TEXTS, text_id, CAMERA)
         print('HAND SELECTION DONE')
         LOGGER.info('HAND SELECTION DONE')
         ###################################################################################################
+        for i in range(PLAY_TIME, 0, -1):
+            TEXTS = add_text(TEXTS, text_id, f'ROUND STARTS IN {i} SECONDS', 'deal', 'info', CAMERA)
+            time.sleep(1)
+            TEXTS = remove_text(TEXTS, text_id, CAMERA)
+        print('ROUND START')
+        LOGGER.info('ROUND START')
+        ###################################################################################################
         text_id = get_new_text_id(TEXTS)
-        for round in range(total_cards):
+        for _ in range(TOTAL_CARDS, 0, -1):
             played_cards = {}
             for i, player in enumerate(PLAYER_TURNS):
-                if player == 'COMPUTER':
-                    pass
+                if player == 'ME':
+                    TEXTS = add_text(TEXTS, text_id, f"{player}'S TURN. ME IS DECIDING....", 'decision', 'info', CAMERA)
+                    card = decide_card(played_cards, OUR_CARDS, HANDS_DECISION[player], LLM_MODEL)
+                    played_cards[player] = card
                 else:
-                    TEXTS = add_text(TEXTS, text_id, f"PLAYER {player}'S TURN. SHOW CARD YOU WANT TO PLAY IN THE CAMERA", f'played_{i}', CAMERA)
+                    TEXTS = add_text(TEXTS, text_id, f"{player}'S TURN. SHOW CARD YOU WANT TO PLAY IN THE CAMERA", 'decision', 'info', CAMERA)
                     card = {}
                     while len(card) != 1:
                         current_frame = CAMERA.current_frame
                         card = YOLO_MODEL.detect(current_frame)
                         card = YOLO_MODEL.post_process(card)
+                        print(f'{player} {card}')
+                    card = list(card.keys())[0]
                     played_cards[player] = card
                 TEXTS = remove_text(TEXTS, text_id, CAMERA)
-        print('ROUNDS ENDED')
-        LOGGER.info('ROUND ENDED')
+                TEXTS = add_text(TEXTS, text_id + 1 + i, f'{player}: {card}.', f'played_{i}', 'info', CAMERA)
+                LOGGER.info(f'{player} PLAYED {card}')
+                time.sleep(TURN_TIME)
+            index, winner = decide_round_winner(played_cards, TRUMP_SUITE)
+            HANDS_DECISION[winner]['made'] = HANDS_DECISION[winner]['made'] + 1
+            LOGGER.info(f'{winner} WON THE ROUND')
+            print(f'{winner} WON THE ROUND')
+            TEXTS = add_text(TEXTS, text_id, f"{winner} WON THE ROUND.", 'decision', 'info', CAMERA)
+            time.sleep(WIN_TIME)
+            TEXTS = remove_text(TEXTS, text_id, CAMERA)
+            TEXTS = add_text(TEXTS, HANDS_DECISION[winner]['text_id'], f"{player}: {HANDS_DECISION[winner]['made']} / {HANDS_DECISION[winner]['expected']}", f"hands_{index}", 'good' if HANDS_DECISION[winner]['made'] == expected_hands else 'bad', CAMERA)
+            print('ROUNDS ENDED')
+            LOGGER.info('ROUND ENDED')
         ###################################################################################################
         TEXTS = remove_text(TEXTS, 3, CAMERA)
         TEXTS = remove_text(TEXTS, 2, CAMERA)
