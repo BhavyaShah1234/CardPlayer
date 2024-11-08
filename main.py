@@ -186,6 +186,8 @@ if __name__ == '__main__':
             time.sleep(WIN_TIME)
             TEXTS = remove_text(TEXTS, text_id, CAMERA)
             TEXTS = add_text(TEXTS, HANDS_DECISION[winner]['text_id'], f"{player}: {HANDS_DECISION[winner]['made']} / {HANDS_DECISION[winner]['expected']}", f"hands_{index}", 'good' if HANDS_DECISION[winner]['made'] == expected_hands else 'bad', CAMERA)
+            while PLAYER_TURNS[0] != winner:
+                PLAYER_TURNS = PLAYER_TURNS[1:] + [PLAYER_TURNS[0]]
             print('ROUNDS ENDED')
             LOGGER.info('ROUND ENDED')
         ###################################################################################################
