@@ -35,17 +35,19 @@ def remove_text(texts, text_id, camera):
 
 def decide_hands(trump_suite, total_cards, player_turns, expected_hands, our_cards, forbidden, model):
     if forbidden is not None:
-        prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. X is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards} and {forbidden} is forbidden."
+        prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. ME is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards} and {forbidden} is forbidden."
     else:
-        prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. X is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards}."
-    # hands = int(model.decide_hands(prompt))
-    hands = 1
+        prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. ME is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards}."
+    hands = int(model.decide_hands(prompt))
+    #hands = 1
     return hands
 
 def decide_card(played_cards, our_cards, hands, model):
     prompt = f"It is our turn now. These are our cards left in hand: {our_cards}. The players before us played the following cards in the following order: {played_cards}. We have to make {hands['expected']} hands from which we have made {hands['made']} hands. Which card should we play next? Answer in terms of SA, HK, CQ, DJ and should be present in our cards."
-    # card = model.decide_card(prompt)
-    card = 'SJ'
+    card = model.decide_card(prompt)
+    #card = 'SJ'
+    if card in our_cards:
+        del our_cards[card]
     return card
 
 def decide_round_winner(played_cards: dict, trump_suite: str):
@@ -83,7 +85,7 @@ if __name__ == '__main__':
     print(GAME_TABLE)
     LOGGER.info(f'\n\n{GAME_TABLE}')
     YOLO_MODEL = e.Detector(WEIGHT_PATH)
-    LLM_MODEL = b.Brain()
+    LLM_MODEL = b.Brain(model_name='distilgpt2', logger=LOGGER)
     print('MODELS LOADED')
     # LOGGER.info('MODELS LOADED')
     CAMERA = c.Camera(CAMERA_ID, IMG_H, IMG_W, LOGGER)
@@ -126,7 +128,16 @@ if __name__ == '__main__':
                     forbidden = TOTAL_CARDS - sum_of_cards
                 else:
                     forbidden = None
-                expected_hands = decide_hands(TRUMP_SUITE, TOTAL_CARDS, PLAYER_TURNS, HANDS_DECISION, OUR_CARDS, forbidden, LLM_MODEL)
+                prompt = f"""
+                We are playing Judgement. The trump suit is {TRUMP_SUITE}, and each player has {TOTAL_CARDS} cards.
+                Our cards are {OUR_CARDS}.
+                The players are {PLAYER_TURNS}, and they play in the same order.
+                The expected hands so far are {expected_hands}.
+                If it's our last turn, avoid choosing {forbidden} (if applicable).
+                How many hands can we make? Respond with an integer between 0 and {TOTAL_CARDS}.
+"""
+
+                expected_hands = LLM_MODEL.decide_hands(prompt)
                 HANDS_DECISION[player]['expected'] = expected_hands
             else:
                 if i == len(PLAYER_TURNS) - 1 and sum_of_cards <= TOTAL_CARDS:
@@ -162,8 +173,11 @@ if __name__ == '__main__':
             for i, player in enumerate(PLAYER_TURNS):
                 if player == 'ME':
                     TEXTS = add_text(TEXTS, text_id, f"{player}'S TURN. ME IS DECIDING....", 'decision', 'info', CAMERA)
-                    card = decide_card(played_cards, OUR_CARDS, HANDS_DECISION[player], LLM_MODEL)
-                    played_cards[player] = card
+                    prompt = f"It is our turn now. These are our cards left in hand: {OUR_CARDS}. The players before us played the following cards in the following order: {played_cards}. We have to make {HANDS_DECISION[player]['expected']} hands from which we have already made {HANDS_DECISION[player]['made']} hands. Which card should we play next? Answer in terms of SA, HK, CQ, DJ and should be present in our cards."
+                    card = LLM_MODEL.decide_card(prompt)
+                    if card in OUR_CARDS:
+                        del OUR_CARDS[card]  # Remove the card after playing
+                        played_cards[player] = card
                 else:
                     TEXTS = add_text(TEXTS, text_id, f"{player}'S TURN. SHOW CARD YOU WANT TO PLAY IN THE CAMERA", 'decision', 'info', CAMERA)
                     card = {}
