@@ -20,6 +20,7 @@ class Camera(t.Thread):
 
     def update_text(self, texts: dict):
         self.texts = {}
+        index = {'A': 0, 'B': 1, 'C': 2, 'ME': 3}
         for text_id in texts:
             if texts[text_id]['color'] == 'good':
                 color = (0, 255, 0)
@@ -49,15 +50,15 @@ class Camera(t.Thread):
                 position = (100, int(self.img_h / 3))
                 text = texts[text_id]['text']
             elif texts[text_id]['position'][:5] == 'hands':
-                i = int(texts[text_id]['position'][6:])
-                position = (10, 300 + (i * 30))
+                player = texts[text_id]['position'][6:]
+                position = (10, 300 + (index[player] * 30))
                 text = texts[text_id]['text']
             elif texts[text_id]['position'] == 'expected':
                 position = (int(self.img_w / 4), 20)
                 text = texts[text_id]['text']
             elif texts[text_id]['position'][:6] == 'played':
-                i = int(texts[text_id]['position'][7:])
-                position = (self.img_w - 100, 300 + (i * 30))
+                player = texts[text_id]['position'][7:]
+                position = (self.img_w - 100, 300 + (index[player] * 30))
                 text = texts[text_id]['text']
             else:
                 position = (int(self.img_w / 2), int(self.img_h / 2))
