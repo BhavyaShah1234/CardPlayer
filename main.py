@@ -3,6 +3,7 @@ import eyes as e
 import brain as b
 import camera as c
 import pandas as pd
+import random as rn
 import logging as l
 
 def create_game_table(games, suite_cycle, card_cycle, turns):
@@ -39,14 +40,13 @@ def decide_hands(trump_suite, total_cards, player_turns, expected_hands, our_car
     else:
         prompt = f"We are playing cards, specifically 'judgement' where one has to score exactly the number of hands they predict at the start of the game. The game currently has trump suite as {trump_suite} and {total_cards} cards per player. If the number of players times cards per player doesn't add to 52 then some lower cards have been burried after dealing. The players in the game are {player_turns} and play in the same order. ME is our player. The number of expected hands are given by {expected_hands}. If the keys in dictionary are less than players that means that some of the players' turn is after ours so we don't have any idea about their decisions. The cards we have are {our_cards}. How many hands can we make with these cards? Answer only in integer numbers ranging from 0 to {total_cards}."
     # hands = int(model.decide_hands(prompt))
-    hands = 1
+    hands = rn.randint(0, total_cards)
     return hands
 
-def decide_card(played_cards, our_cards, hands, model):
+def decide_card(played_cards: dict, our_cards: dict, hands: dict, model, logger):
     prompt = f"It is our turn now. These are our cards left in hand: {our_cards}. The players before us played the following cards in the following order: {played_cards}. We have to make {hands['expected']} hands from which we have made {hands['made']} hands. Which card should we play next? Answer in terms of SA, HK, CQ, DJ and should be present in our cards."
     # card = model.decide_card(prompt)
-    card = ''
-    return card
+    return rn.choice(list(our_cards.keys()))
 
 def decide_round_winner(played_cards: dict, trump_suite: str):
     winner = None
@@ -158,6 +158,7 @@ if __name__ == '__main__':
             TEXTS = remove_text(TEXTS, text_id, CAMERA)
         print('ROUND START')
         LOGGER.info('ROUND START')
+        LOGGER.info('===============================================================================')
         ###################################################################################################
         text_id = get_new_text_id(TEXTS)
         for _ in range(TOTAL_CARDS, 0, -1):
@@ -166,7 +167,7 @@ if __name__ == '__main__':
                 TEXTS = add_text(TEXTS, text_id + 1 + i, f'{player}: {played_cards[player]}.', f'played_{player}', 'info', CAMERA)
                 if player == 'ME':
                     TEXTS = add_text(TEXTS, text_id, f"{player}'S TURN. ME IS DECIDING....", 'decision', 'info', CAMERA)
-                    played_cards[player] = decide_card(played_cards, our_cards, hand_decision[player], LLM_MODEL)
+                    played_cards[player] = decide_card(played_cards, our_cards, hand_decision[player], LLM_MODEL, LOGGER)
                 else:
                     TEXTS = add_text(TEXTS, text_id, f"{player}'S TURN. SHOW CARD YOU WANT TO PLAY IN THE CAMERA", 'decision', 'info', CAMERA)
                     card = {}
